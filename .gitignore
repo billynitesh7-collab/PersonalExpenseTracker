@@ -1,0 +1,31 @@
+# Maven and legacy Java build output
+/target/
+/out/
+*.class
+
+# Local financial records and atomic-write files (any depth under data/)
+/data/*.json
+/data/**/*.json
+/data/*.tmp
+/data/**/*.tmp
+
+# Local secrets and private keys
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.jks
+
+# IDE and operating-system files
+.vscode/
+.idea/
+.DS_Store
+
+# Editor and general temporary files
+*.swp
+*.swo
+*~
+*.tmp
+*.temp
