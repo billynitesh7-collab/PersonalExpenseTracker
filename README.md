@@ -21,9 +21,9 @@ A local, browser-based personal finance tracker built with Java 21 and plain HTM
 
 ## Architecture
 
-The existing application remains the browser-facing server: `com.expense.Main` starts the JDK `HttpServer` on `127.0.0.1:8000`, serves the frontend, and exposes the transaction, budget, and report APIs. Its handlers, services, and `JsonDataStore` retain their existing responsibilities.
+Spring Boot is now the primary server: `com.expense.springboot.SpringBootExpenseApplication` serves the frontend, APIs, and health endpoint on `127.0.0.1:8081` by default. Its controllers reuse the existing services and `JsonDataStore`; Maven packages the existing `frontend/` tree as static resources. Set `PORT` to change the HTTP port and `EXPENSE_DATA_DIRECTORY` to change the JSON data directory.
 
-A separate Spring Boot entry point, `com.expense.springboot.SpringBootExpenseApplication`, currently exposes only `GET /api/health` on `127.0.0.1:8081` by default. It does not replace or call the existing server, APIs, services, or JSON storage. Set the `PORT` environment variable to select another port. Neither entry point includes user accounts or authentication.
+The original `com.expense.Main` and JDK `HttpServer` remain available as a backup on `127.0.0.1:8000`. It is no longer the primary entry point. Neither server includes user accounts or authentication.
 
 ## Project structure
 
@@ -101,21 +101,21 @@ Run the following from the project root. The first invocation downloads Maven 3.
 
 `clean package` compiles both entry points and runs the complete test suite. `test` reruns the tests. The four existing standalone Java test programs are invoked by JUnit adapters, and the Spring Boot health endpoint has its own MVC test. Stop a running server with **Ctrl+C**.
 
-### Existing application (port 8000)
-
-```sh
-./mvnw exec:java -Dexec.mainClass=com.expense.Main
-```
-
-Run from the project root because this application resolves `frontend/` and `data/` relative to that directory. On first run, it creates missing JSON files but does not replace existing ones. Open [http://localhost:8000](http://localhost:8000).
-
-### Separate Spring Boot application (port 8081)
+### Primary application: Spring Boot (port 8081)
 
 ```sh
 ./mvnw spring-boot:run -Dspring-boot.run.main-class=com.expense.springboot.SpringBootExpenseApplication
 ```
 
-This app currently exposes only `GET /api/health`; it does not manage financial data. The default port comes from `PORT` (default `8081`), for example `PORT=8090 ./mvnw spring-boot:run -Dspring-boot.run.main-class=com.expense.springboot.SpringBootExpenseApplication`. It binds to loopback (`127.0.0.1`). The health URL is [http://127.0.0.1:8081/api/health](http://127.0.0.1:8081/api/health), returning `{"status":"UP"}`.
+Open [http://localhost:8081](http://localhost:8081). Spring Boot serves the frontend, local Chart.js, and all documented APIs. `GET /api/health` returns `{"status":"UP"}`. The port defaults to `8081`; change it with `PORT`, for example `PORT=8090 ./mvnw spring-boot:run -Dspring-boot.run.main-class=com.expense.springboot.SpringBootExpenseApplication`.
+
+### Legacy backup application (port 8000)
+
+```sh
+./mvnw exec:java -Dexec.mainClass=com.expense.Main
+```
+
+This backup remains available but is not needed when using Spring Boot. Run it from the project root because its frontend and `data/` paths are relative to that directory.
 
 ## API endpoints
 
