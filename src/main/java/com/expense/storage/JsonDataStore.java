@@ -18,7 +18,7 @@ import java.util.List;
 import java.util.Objects;
 
 /** Reads and writes the two JSON files used by the application. */
-public class JsonDataStore {
+public class JsonDataStore implements FinanceDataStore {
     private static final Type TRANSACTION_LIST_TYPE = new TypeToken<List<Transaction>>() { }.getType();
     private static final Type BUDGET_LIST_TYPE = new TypeToken<List<Budget>>() { }.getType();
 

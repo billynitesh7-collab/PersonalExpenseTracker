@@ -23,6 +23,8 @@ let toastTimeout;
 let filterTimeout;
 let filterRequestNumber = 0;
 let reportsRequestNumber = 0;
+let authenticatedUser = null;
+let appInitialized = false;
 
 function toISODate(date) {
   const year = date.getFullYear();
@@ -710,7 +712,7 @@ function setHeaderDate() {
   document.getElementById("greeting").textContent = hour < 12 ? "YOUR FINANCES, AT A GLANCE · GOOD MORNING" : hour < 18 ? "YOUR FINANCES, AT A GLANCE · GOOD AFTERNOON" : "YOUR FINANCES, AT A GLANCE · GOOD EVENING";
 }
 
-document.addEventListener("DOMContentLoaded", () => {
+function initializeApplication() {
   initializeCategoryOptions();
   setHeaderDate();
   document.getElementById("report-date").value = todayISO;
@@ -851,4 +853,133 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("report-category-month").addEventListener("change", loadReports);
   document.getElementById("menu-toggle").addEventListener("click", () => document.getElementById("sidebar").classList.toggle("open"));
   document.querySelectorAll(".sidebar .nav-link").forEach((link) => link.addEventListener("click", () => document.getElementById("sidebar").classList.remove("open")));
-});
+  document.getElementById("logout-button").addEventListener("click", signOut);
+}
+
+function setAuthFeedback(message = "", success = false) {
+  const feedback = document.getElementById("auth-feedback");
+  feedback.textContent = message;
+  feedback.classList.toggle("hidden", !message);
+  feedback.classList.toggle("success", Boolean(message) && success);
+  feedback.setAttribute("role", success ? "status" : "alert");
+}
+
+function setAuthMode(mode) {
+  const loginMode = mode === "login";
+  document.getElementById("login-form").classList.toggle("hidden", !loginMode);
+  document.getElementById("register-form").classList.toggle("hidden", loginMode);
+  document.getElementById("show-login").classList.toggle("selected", loginMode);
+  document.getElementById("show-login").setAttribute("aria-selected", String(loginMode));
+  document.getElementById("show-register").classList.toggle("selected", !loginMode);
+  document.getElementById("show-register").setAttribute("aria-selected", String(!loginMode));
+  document.getElementById("auth-title").textContent = loginMode ? "Welcome back" : "Create your account";
+  setAuthFeedback("");
+}
+
+function showAuthScreen(message = "", success = false) {
+  document.getElementById("app-shell").classList.add("hidden");
+  document.getElementById("auth-screen").classList.remove("hidden");
+  setAuthFeedback(message, success);
+}
+
+function clearFinancialState() {
+  transactions = [];
+  transactionsLoaded = false;
+  budgets = [];
+  budgetSummaries.clear();
+  budgetsLoaded = false;
+  [cashflowChart, categoryChart, reportCashflowChart, reportCategoryChart].forEach((chart) => chart?.destroy());
+  cashflowChart = categoryChart = reportCashflowChart = reportCategoryChart = undefined;
+}
+
+async function activateAccount(user) {
+  authenticatedUser = user;
+  const shortName = user.email.split("@")[0];
+  document.getElementById("profile-email").textContent = user.email;
+  document.getElementById("profile-avatar").textContent = shortName.slice(0, 1).toUpperCase();
+  document.getElementById("header-avatar").textContent = shortName.slice(0, 1).toUpperCase();
+  document.getElementById("app-shell").classList.remove("hidden");
+  document.getElementById("auth-screen").classList.add("hidden");
+  if (!appInitialized) {
+    appInitialized = true;
+    initializeApplication();
+    return;
+  }
+  showView(location.hash.slice(1) || "dashboard");
+  const transactionsOk = await loadTransactionsFromApi();
+  const budgetsOk = await loadBudgetsFromApi();
+  if (!transactionsOk || !budgetsOk) setConnectionStatus("error", "Some account data could not be loaded. Retry when the server is available.");
+}
+
+async function signOut() {
+  const button = document.getElementById("logout-button");
+  button.disabled = true;
+  try {
+    await PersonalExpenseApi.logout();
+    clearFinancialState();
+    authenticatedUser = null;
+    showAuthScreen("You have signed out.", true);
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function initializeAuthentication() {
+  document.getElementById("show-login").addEventListener("click", () => setAuthMode("login"));
+  document.getElementById("show-register").addEventListener("click", () => setAuthMode("register"));
+  document.getElementById("login-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const button = document.getElementById("login-submit");
+    const data = new FormData(form);
+    button.disabled = true;
+    setAuthFeedback("");
+    try {
+      await PersonalExpenseApi.login(data.get("email"), data.get("password"));
+      await activateAccount(await PersonalExpenseApi.currentUser());
+    } catch (error) {
+      setAuthFeedback(error.message);
+    } finally {
+      button.disabled = false;
+    }
+  });
+  document.getElementById("register-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const button = document.getElementById("register-submit");
+    const data = new FormData(form);
+    button.disabled = true;
+    setAuthFeedback("");
+    try {
+      const user = await PersonalExpenseApi.register(data.get("email"), data.get("password"));
+      document.querySelector("#login-form [name=email]").value = user.email;
+      form.reset();
+      setAuthMode("login");
+      setAuthFeedback("Account created. Sign in to continue.", true);
+    } catch (error) {
+      setAuthFeedback(error.message);
+    } finally {
+      button.disabled = false;
+    }
+  });
+  window.addEventListener("expense-session-expired", () => {
+    if (!authenticatedUser) return;
+    clearFinancialState();
+    authenticatedUser = null;
+    showAuthScreen("Your session expired. Sign in again.");
+  });
+  showAuthScreen();
+  (async () => {
+    try {
+      await PersonalExpenseApi.refreshCsrfToken();
+      await activateAccount(await PersonalExpenseApi.currentUser());
+    } catch (error) {
+      if (error.status === 401) showAuthScreen();
+      else showAuthScreen(error.message);
+    }
+  })();
+}
+
+document.addEventListener("DOMContentLoaded", initializeAuthentication);

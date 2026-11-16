@@ -3,24 +3,21 @@ package com.expense.springboot;
 import com.expense.service.BudgetService;
 import com.expense.service.ReportService;
 import com.expense.service.TransactionService;
-import com.expense.storage.DataInitializer;
-import com.expense.storage.JsonDataStore;
-import org.springframework.beans.factory.annotation.Value;
+import com.expense.storage.FinanceDataStore;
+import com.expense.storage.PostgresFinanceDataStore;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import java.io.IOException;
-import java.nio.file.Path;
 
-/** Connects Spring controllers to the existing JSON-backed services. */
+/** Connects the Spring application to the PostgreSQL-backed production store. */
 @Configuration
 public class ExpenseApiConfiguration {
-    @Bean JsonDataStore jsonDataStore(@Value("${expense.data-directory:data}") String directory) throws IOException {
-        Path dataDirectory = Path.of(directory);
-        DataInitializer.initialize(dataDirectory);
-        return new JsonDataStore(dataDirectory);
+    @Bean FinanceDataStore financeDataStore(JdbcTemplate jdbcTemplate, PlatformTransactionManager transactionManager) {
+        return new PostgresFinanceDataStore(jdbcTemplate, transactionManager);
     }
-    @Bean TransactionService transactionService(JsonDataStore dataStore) { return new TransactionService(dataStore); }
-    @Bean BudgetService budgetService(JsonDataStore dataStore, TransactionService transactions) {
+    @Bean TransactionService transactionService(FinanceDataStore dataStore) { return new TransactionService(dataStore); }
+    @Bean BudgetService budgetService(FinanceDataStore dataStore, TransactionService transactions) {
         return new BudgetService(dataStore, transactions);
     }
     @Bean ReportService reportService(TransactionService transactions, BudgetService budgets) {

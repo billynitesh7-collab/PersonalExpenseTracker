@@ -7,6 +7,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import java.io.IOException;
@@ -15,12 +17,20 @@ import java.util.NoSuchElementException;
 import java.util.Set;
 
 /** Preserves JSON error responses without exposing local paths or stack traces. */
-@RestControllerAdvice(basePackages = "com.expense.springboot.api")
+@RestControllerAdvice(basePackages = "com.expense.springboot")
 public class ApiExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     ResponseEntity<?> invalid(IllegalArgumentException ex) { return ApiResponses.error(HttpStatus.BAD_REQUEST, ex.getMessage()); }
     @ExceptionHandler(NoSuchElementException.class)
     ResponseEntity<?> missing(NoSuchElementException ex) { return ApiResponses.error(HttpStatus.NOT_FOUND, ex.getMessage()); }
+    @ExceptionHandler(AuthenticationException.class)
+    ResponseEntity<?> authenticationFailed(AuthenticationException ex) { return ApiResponses.error(HttpStatus.UNAUTHORIZED, "Invalid email or password."); }
+    @ExceptionHandler(ResponseStatusException.class)
+    ResponseEntity<?> statusException(ResponseStatusException ex) {
+        HttpStatus status = HttpStatus.valueOf(ex.getStatusCode().value());
+        String reason = ex.getReason() == null ? "The request could not be completed." : ex.getReason();
+        return ApiResponses.error(status, reason);
+    }
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     ResponseEntity<?> methodNotAllowed(HttpRequestMethodNotSupportedException ex) {
         Set<HttpMethod> methods = ex.getSupportedHttpMethods();

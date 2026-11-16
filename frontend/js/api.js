@@ -3,6 +3,9 @@
   const TRANSACTIONS_URL = "/api/transactions";
   const BUDGETS_URL = "/api/budgets";
   const REPORTS_URL = "/api/reports";
+  const AUTH_URL = "/api/auth";
+  let csrfToken = null;
+  let csrfHeaderName = "X-CSRF-TOKEN";
 
   // JSON.parse normally turns decimal JSON numbers into binary floating-point values.
   // Quote numeric tokens first so Java money values arrive as their exact decimal text.
@@ -45,18 +48,40 @@
     return serialized.replace(field, `${JSON.stringify(fieldName)}:${decimalText}`);
   }
 
+  async function refreshCsrfToken() {
+    let response;
+    try {
+      response = await fetch(`${AUTH_URL}/csrf`, { credentials: "same-origin", cache: "no-store" });
+    } catch (error) {
+      throw new Error("Could not reach the Java server at http://localhost:8081.");
+    }
+    const result = parseResponseJson(await response.text());
+    if (!response.ok || !result?.token) throw new Error(result?.error || "Could not initialize request protection.");
+    csrfToken = result.token;
+    csrfHeaderName = result.headerName || "X-CSRF-TOKEN";
+    return csrfToken;
+  }
+
   async function request(path, options = {}) {
+    const method = (options.method || "GET").toUpperCase();
+    const headers = {
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...options.headers
+    };
+    if (!["GET", "HEAD", "OPTIONS", "TRACE"].includes(method)) {
+      if (!csrfToken) await refreshCsrfToken();
+      headers[csrfHeaderName] = csrfToken;
+    }
     let response;
     try {
       response = await fetch(path, {
         ...options,
-        headers: {
-          ...(options.body ? { "Content-Type": "application/json" } : {}),
-          ...options.headers
-        }
+        method,
+        credentials: "same-origin",
+        headers
       });
     } catch (error) {
-      throw new Error("Could not reach the Java server. Start it at http://localhost:8000 and retry.");
+      throw new Error("Could not reach the Java server at http://localhost:8081.");
     }
 
     const responseText = await response.text();
@@ -73,7 +98,12 @@
     }
 
     if (!response.ok) {
-      throw new Error(result?.error || `The request failed (${response.status}).`);
+      const error = new Error(result?.error || `The request failed (${response.status}).`);
+      error.status = response.status;
+      if (response.status === 401 && !path.startsWith(`${AUTH_URL}/login`) && !path.startsWith(`${AUTH_URL}/register`) && !path.startsWith(`${AUTH_URL}/me`)) {
+        window.dispatchEvent(new Event("expense-session-expired"));
+      }
+      throw error;
     }
     return result;
   }
@@ -104,6 +134,22 @@
   }
 
   window.PersonalExpenseApi = {
+    refreshCsrfToken,
+    currentUser() { return request(`${AUTH_URL}/me`); },
+    register(email, password) {
+      return request(`${AUTH_URL}/register`, { method: "POST", body: JSON.stringify({ email, password }) });
+    },
+    async login(email, password) {
+      const user = await request(`${AUTH_URL}/login`, { method: "POST", body: JSON.stringify({ email, password }) });
+      csrfToken = null;
+      await refreshCsrfToken();
+      return user;
+    },
+    async logout() {
+      await request(`${AUTH_URL}/logout`, { method: "POST" });
+      csrfToken = null;
+      await refreshCsrfToken();
+    },
     listTransactions,
     listBudgets,
     getBudget,

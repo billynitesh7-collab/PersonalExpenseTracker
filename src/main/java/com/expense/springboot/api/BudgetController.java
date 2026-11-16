@@ -1,6 +1,7 @@
 package com.expense.springboot.api;
 
 import com.expense.model.BudgetSummary;
+import com.expense.springboot.auth.AccountPrincipal;
 import com.expense.service.BudgetService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import java.io.IOException;
 import java.time.YearMonth;
 import java.util.Map;
@@ -22,21 +24,22 @@ public class BudgetController {
     public BudgetController(BudgetService service) { this.service = service; }
 
     @GetMapping
-    public ResponseEntity<?> getBudgets(HttpServletRequest request) throws IOException {
+    public ResponseEntity<?> getBudgets(HttpServletRequest request, @AuthenticationPrincipal AccountPrincipal user) throws IOException {
         Map<String, String> params = ApiRequestParser.parseQuery(request.getQueryString());
         ApiRequestParser.requireOnlyAllowedQuery(params, "month");
         String value = params.get("month");
-        if (value == null) return ApiResponses.json(HttpStatus.OK, service.getAllBudgetSummaries());
+        if (value == null) return ApiResponses.json(HttpStatus.OK, service.getAllBudgetSummaries(user.id()));
         if (value.isBlank()) throw new IllegalArgumentException("Month cannot be empty.");
         YearMonth month = ApiRequestParser.parseMonth(value, "month");
-        return ApiResponses.json(HttpStatus.OK, service.getBudgetSummary(month));
+        return ApiResponses.json(HttpStatus.OK, service.getBudgetSummary(month, user.id()));
     }
 
     @PutMapping("/{month}")
-    public ResponseEntity<BudgetSummary> saveBudget(@PathVariable String month, @RequestBody(required = false) String body) throws IOException {
+    public ResponseEntity<BudgetSummary> saveBudget(@PathVariable String month, @RequestBody(required = false) String body,
+                                                    @AuthenticationPrincipal AccountPrincipal user) throws IOException {
         YearMonth parsed = ApiRequestParser.parseMonth(month, "Month in the URL");
-        service.createOrUpdateBudget(parsed, ApiRequestParser.readBudgetAmount(body));
-        return ApiResponses.json(HttpStatus.OK, service.getBudgetSummary(parsed));
+        service.createOrUpdateBudget(parsed, ApiRequestParser.readBudgetAmount(body), user.id());
+        return ApiResponses.json(HttpStatus.OK, service.getBudgetSummary(parsed, user.id()));
     }
 
     @RequestMapping

@@ -29,15 +29,27 @@ public class ReportService {
     }
 
     public FinancialSummary getFinancialSummary() throws IOException {
-        List<Transaction> transactions = transactionService.getAllTransactions();
+        return getFinancialSummary(null);
+    }
+
+    public FinancialSummary getFinancialSummary(long userId) throws IOException { return getFinancialSummary(Long.valueOf(userId)); }
+
+    private FinancialSummary getFinancialSummary(Long userId) throws IOException {
+        List<Transaction> transactions = getTransactions(userId);
         Totals totals = calculateTotals(transactions);
         return new FinancialSummary(totals.income, totals.expenses,
                 totals.income.subtract(totals.expenses), transactions.size());
     }
 
     public DailyReport getDailyReport(LocalDate date) throws IOException {
+        return getDailyReport(date, null);
+    }
+
+    public DailyReport getDailyReport(LocalDate date, long userId) throws IOException { return getDailyReport(date, Long.valueOf(userId)); }
+
+    private DailyReport getDailyReport(LocalDate date, Long userId) throws IOException {
         requireDate(date);
-        List<Transaction> matches = transactionService.getAllTransactions().stream()
+        List<Transaction> matches = getTransactions(userId).stream()
                 .filter(transaction -> date.equals(transaction.getDate()))
                 .toList();
         Totals totals = calculateTotals(matches);
@@ -46,8 +58,14 @@ public class ReportService {
     }
 
     public MonthlyReport getMonthlyReport(YearMonth month) throws IOException {
+        return getMonthlyReport(month, null);
+    }
+
+    public MonthlyReport getMonthlyReport(YearMonth month, long userId) throws IOException { return getMonthlyReport(month, Long.valueOf(userId)); }
+
+    private MonthlyReport getMonthlyReport(YearMonth month, Long userId) throws IOException {
         requireMonth(month);
-        List<Transaction> transactions = transactionService.getAllTransactions();
+        List<Transaction> transactions = getTransactions(userId);
         MonthTotals selected = monthTotals(month, transactions);
         List<MonthTotals> comparison = monthlyBreakdown(month.getYear(), transactions);
         return new MonthlyReport(selected.month, selected.monthlyIncome, selected.monthlyExpenses,
@@ -55,8 +73,14 @@ public class ReportService {
     }
 
     public YearlyReport getYearlyReport(Year year) throws IOException {
+        return getYearlyReport(year, null);
+    }
+
+    public YearlyReport getYearlyReport(Year year, long userId) throws IOException { return getYearlyReport(year, Long.valueOf(userId)); }
+
+    private YearlyReport getYearlyReport(Year year, Long userId) throws IOException {
         requireYear(year);
-        List<Transaction> transactions = transactionService.getAllTransactions();
+        List<Transaction> transactions = getTransactions(userId);
         List<MonthTotals> breakdown = monthlyBreakdown(year.getValue(), transactions);
         BigDecimal income = BigDecimal.ZERO;
         BigDecimal expenses = BigDecimal.ZERO;
@@ -70,15 +94,21 @@ public class ReportService {
     }
 
     public CategoryReport getCategoryReport(YearMonth month) throws IOException {
+        return getCategoryReport(month, null);
+    }
+
+    public CategoryReport getCategoryReport(YearMonth month, long userId) throws IOException { return getCategoryReport(month, Long.valueOf(userId)); }
+
+    private CategoryReport getCategoryReport(YearMonth month, Long userId) throws IOException {
         requireMonth(month);
-        List<Transaction> transactions = transactionService.getAllTransactions().stream()
+        List<Transaction> transactions = getTransactions(userId).stream()
                 .filter(transaction -> transaction.getType() == TransactionType.EXPENSE)
                 .filter(transaction -> transaction.getDate() != null
                         && month.equals(YearMonth.from(transaction.getDate())))
                 .toList();
 
         // The budget service uses the same transaction source and performs the authoritative monthly expense sum.
-        BigDecimal totalExpenses = budgetService.calculateTotalExpenses(month);
+        BigDecimal totalExpenses = userId == null ? budgetService.calculateTotalExpenses(month) : budgetService.calculateTotalExpenses(month, userId);
         Map<String, BigDecimal> categoryAmounts = new TreeMap<>();
         for (Transaction transaction : transactions) {
             if (transaction.getCategory() == null || transaction.getAmount() == null) continue;
@@ -98,6 +128,10 @@ public class ReportService {
         String highest = categories.isEmpty() ? null : categories.get(0).category;
         String lowest = categories.isEmpty() ? null : categories.get(categories.size() - 1).category;
         return new CategoryReport(month, totalExpenses, categories, highest, lowest);
+    }
+
+    private List<Transaction> getTransactions(Long userId) throws IOException {
+        return userId == null ? transactionService.getAllTransactions() : transactionService.getAllTransactions(userId);
     }
 
     private List<MonthTotals> monthlyBreakdown(int year, List<Transaction> transactions) {
